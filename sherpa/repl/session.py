@@ -151,9 +151,14 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
         if handler:
             return handler(args)
         else:
-            self.console.print(f"[red]Unknown command: {command}[/red]")
-            self.console.print("[dim]Type 'help' for available commands.[/dim]")
-            return None
+            # If input looks like a question, treat it as an 'ask' command
+            question_starters = ['what', 'how', 'why', 'when', 'where', 'which', 'can', 'could', 'would', 'should', 'is', 'are', 'do', 'does', 'i', 'tell', 'explain', 'describe', 'show']
+            if command.lower() in question_starters or '?' in user_input:
+                return self._cmd_ask(user_input)  # Pass the full input as question
+            else:
+                self.console.print(f"[red]Unknown command: {command}[/red]")
+                self.console.print("[dim]Type 'help' for commands, or just ask a question naturally.[/dim]")
+                return None
 
     # === Command Handlers ===
 
@@ -382,26 +387,44 @@ Include any relevant equations or algorithms."""
             self.console.print(f"[red]Algorithm not found: {args}[/red]")
 
     def _cmd_ask(self, args: str) -> None:
-        """Ask a question about the paper"""
+        """Ask a question - about a paper or general ML topics"""
         if not args:
             self.console.print("[red]Usage: ask <question>[/red]")
             return
 
         if not self.claude:
-            self.console.print("[red]Claude API not configured.[/red]")
+            self.console.print("[red]Claude API not configured. Run 'sherpa --setup' first.[/red]")
             return
 
-        context = self._build_paper_context()
+        # Build context based on what's loaded
+        if self.current_paper:
+            context = self._build_paper_context()
+            prompt = f"""You are Sherpa, an AI assistant helping researchers implement ML papers.
+
+The user is working on: {self.current_paper['title']}
+
+Paper context:
+{context}
+
+User question: {args}
+
+Answer helpfully, referencing the paper when relevant. If the question is general (not about this specific paper), you can answer broadly about ML/AI topics."""
+        else:
+            # General question - provide knowledge base context
+            papers = self.kb.get_all_papers()
+            paper_list = "\n".join([f"- {p['paper_id']}: {p['title']} ({p['difficulty']})" for p in papers])
+            prompt = f"""You are Sherpa, an AI assistant helping researchers decide which ML papers to implement and guiding them through implementation.
+
+Available papers in knowledge base:
+{paper_list}
+
+User question: {args}
+
+Answer helpfully. If they're asking for recommendations, consider their question and suggest relevant papers from the list above. If it's a general ML question, answer it directly."""
 
         # Add to conversation history if in session
         if self.current_session:
             self.current_session.add_message('user', args)
-
-        prompt = f"""Based on this paper, answer the question: {args}
-
-{context}
-
-Answer concisely and accurately based on the paper."""
 
         self.console.print(f"\n[dim]Thinking...[/dim]")
 
