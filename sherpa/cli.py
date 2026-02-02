@@ -311,11 +311,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  sherpa "Should I implement DPO?"
-  sherpa --path "learn DPO"
-  sherpa --list
+  sherpa --setup                         # Configure API key (first time)
   sherpa -i                              # Start interactive implementation mode
   sherpa --implement dpo_2023            # Start implementing a specific paper
+  sherpa "Should I implement DPO?"       # Quick question
+  sherpa --path "learn DPO"              # Get learning path
+  sherpa --list                          # List available papers
         """
     )
 
@@ -326,6 +327,8 @@ Examples:
                         help='Start interactive implementation REPL')
     parser.add_argument('--implement', metavar='PAPER',
                         help='Start implementing a specific paper')
+    parser.add_argument('--setup', action='store_true',
+                        help='Configure Sherpa (set API key, etc.)')
     parser.add_argument('--agentic', action='store_true',
                         help='Use Claude API for intelligent reasoning (requires ANTHROPIC_API_KEY)')
     parser.add_argument('--expertise', default='intermediate',
@@ -333,6 +336,21 @@ Examples:
                         help='Your expertise level')
 
     args = parser.parse_args()
+
+    # Setup mode
+    if args.setup:
+        from .config import prompt_for_api_key, load_config
+        print("Sherpa Setup")
+        print("=" * 40)
+        config = load_config()
+        if config.get('anthropic_api_key'):
+            print(f"\nCurrent API key: sk-ant-...{config['anthropic_api_key'][-8:]}")
+            replace = input("Replace with new key? [y/N]: ").strip().lower()
+            if replace != 'y':
+                print("Setup complete.")
+                return
+        prompt_for_api_key()
+        return
 
     # Interactive mode
     if args.interactive or args.implement:

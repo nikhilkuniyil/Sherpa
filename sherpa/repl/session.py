@@ -20,6 +20,7 @@ from anthropic import Anthropic
 from ..db import KnowledgeBase, SessionManager, ImplementationSession
 from ..pdf import PDFParser, ParsedPaper
 from ..integrations import ClaudeCodeInterface, check_claude_code_available
+from ..config import get_api_key
 from .commands import get_command_help, COMMANDS
 
 
@@ -38,8 +39,8 @@ class ImplementationREPL:
         self.current_session: Optional[ImplementationSession] = None
         self.claude_code: Optional[ClaudeCodeInterface] = None
 
-        # Claude API for explanations
-        api_key = os.getenv('ANTHROPIC_API_KEY')
+        # Claude API for explanations - use config system
+        api_key = get_api_key(prompt_if_missing=True)
         self.claude = Anthropic(api_key=api_key) if api_key else None
 
         # REPL setup
@@ -88,11 +89,13 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
 """
         self.console.print(Panel(welcome, border_style="blue"))
 
-        if not self.claude:
-            self.console.print("[yellow]Note: ANTHROPIC_API_KEY not set. Some features disabled.[/yellow]")
+        if self.claude:
+            self.console.print("[green]Claude API connected.[/green]")
+        else:
+            self.console.print("[yellow]Note: No API key configured. Run 'sherpa --setup' or set ANTHROPIC_API_KEY.[/yellow]")
 
         if not check_claude_code_available():
-            self.console.print("[yellow]Note: Claude Code CLI not found. Install for code generation.[/yellow]")
+            self.console.print("[dim]Note: Claude Code CLI not found. 'implement' command unavailable.[/dim]")
 
     def _get_prompt(self) -> str:
         """Generate context-aware prompt"""
