@@ -2,5 +2,6 @@
 
 from .rule_based import RecommendationEngine
 from .agentic import AgenticRecommendationEngine
+from .smart_search import SmartSearchEngine
 
-__all__ = ["RecommendationEngine", "AgenticRecommendationEngine"]
+__all__ = ["RecommendationEngine", "AgenticRecommendationEngine", "SmartSearchEngine"]

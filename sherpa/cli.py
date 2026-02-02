@@ -14,8 +14,9 @@ import os
 import argparse
 from typing import Dict
 
-from .engines import RecommendationEngine, AgenticRecommendationEngine
+from .engines import RecommendationEngine, AgenticRecommendationEngine, SmartSearchEngine
 from .db import KnowledgeBase
+from anthropic import Anthropic
 
 
 class Sherpa:
@@ -25,7 +26,12 @@ class Sherpa:
         self.kb = KnowledgeBase()
 
         # Try to use agentic engine if requested or if API key available
-        self.agentic_available = os.getenv('ANTHROPIC_API_KEY') is not None
+        api_key = os.getenv('ANTHROPIC_API_KEY')
+        self.agentic_available = api_key is not None
+
+        # Initialize Claude client for smart search
+        self.claude = Anthropic(api_key=api_key) if api_key else None
+        self.smart_search = SmartSearchEngine(claude_client=self.claude, kb=self.kb)
 
         if use_agentic or self.agentic_available:
             self.agentic_engine = AgenticRecommendationEngine()
@@ -42,14 +48,32 @@ class Sherpa:
             print("Using Rule-based Mode (use --agentic flag for Claude-powered reasoning)")
 
     def ask(self, question: str, context: dict = None):
-        """Ask the coach about a paper"""
+        """Ask the coach about a paper - uses smart search for broad queries"""
+
+        question_lower = question.lower()
+
+        # Detect if this is a broad learning query vs specific paper question
+        learning_signals = ['understand', 'learn', 'what is', 'explain', 'how does', 'get into', 'dive into']
+        latest_signals = ['latest', 'recent', 'new', 'newest', 'state of the art']
+
+        is_learning_query = any(signal in question_lower for signal in learning_signals)
+        is_latest_query = any(signal in question_lower for signal in latest_signals)
+
+        # Use smart search for broad queries
+        if (is_learning_query or is_latest_query) and self.claude:
+            self.smart_search_query(question)
+            return
 
         # Parse the question to extract paper name
         paper_query = self._extract_paper_query(question)
 
         if not paper_query:
-            print("\nI'm not sure which paper you're asking about.")
-            print("Try: 'Should I implement DPO?' or 'Is ORPO worth implementing?'")
+            # Try smart search as fallback
+            if self.claude:
+                self.smart_search_query(question)
+            else:
+                print("\nI'm not sure which paper you're asking about.")
+                print("Try: 'Should I implement DPO?' or 'Is ORPO worth implementing?'")
             return
 
         # Get recommendation
@@ -57,6 +81,67 @@ class Sherpa:
 
         # Display result
         self._display_recommendation(result)
+
+    def smart_search_query(self, query: str):
+        """Handle queries with smart search"""
+        print(f"\nAnalyzing your query...")
+
+        result = self.smart_search.search(query)
+
+        intent = result.get('intent', 'unknown')
+        papers = result.get('papers', [])
+
+        # Display intent
+        intent_labels = {
+            'understand': "LEARNING MODE - Foundational papers first",
+            'latest': "LATEST MODE - Recent papers first",
+            'implement': "IMPLEMENTATION MODE - Target paper and prerequisites",
+        }
+        print(f"\n{intent_labels.get(intent, 'Papers found:')}")
+        print("=" * 70)
+
+        if not papers:
+            print("\nNo relevant papers found.")
+            return
+
+        # Display papers
+        for i, paper in enumerate(papers, 1):
+            category = paper.get('_category', '')
+            category_icons = {
+                'foundational': '⭐',
+                'practical': '🔧',
+                'recent': '🆕',
+                'dense': '📚',
+            }
+            icon = category_icons.get(category, '  ')
+
+            print(f"\n{i}. {icon} {paper['title'][:60]}...")
+            print(f"   ArXiv: {paper['arxiv_id']} ({paper['published'][:4]})")
+
+            why = paper.get('_why', '')
+            if why:
+                print(f"   {why}")
+
+        # Show background reading for "latest"
+        if result.get('background_reading'):
+            print("\n" + "-" * 70)
+            print("BACKGROUND READING (Foundational):")
+            for p in result['background_reading']:
+                print(f"  - {p['arxiv_id']}: {p['title'][:50]}...")
+
+        # Show prerequisites for "implement"
+        if result.get('prerequisites'):
+            print("\n" + "-" * 70)
+            print("PREREQUISITES (Implement These First):")
+            for p in result['prerequisites']:
+                print(f"  - {p['arxiv_id']}: {p['title'][:50]}...")
+
+        # Follow-up
+        if result.get('has_more'):
+            print(f"\n{result.get('follow_up_prompt', 'More papers available.')}")
+
+        print("\nUse 'sherpa -i' for interactive mode with 'more', 'add', and other commands.")
+        print()
 
     def _extract_paper_query(self, question: str) -> str:
         """Extract paper name from natural language question"""
@@ -311,16 +396,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  sherpa --setup                         # Configure API key (first time)
-  sherpa -i                              # Start interactive implementation mode
-  sherpa --implement dpo_2023            # Start implementing a specific paper
-  sherpa "Should I implement DPO?"       # Quick question
-  sherpa --path "learn DPO"              # Get learning path
-  sherpa --list                          # List available papers
+  sherpa --setup                              # Configure API key (first time)
+  sherpa -i                                   # Start interactive mode
+  sherpa "I want to understand DPO"           # Smart search with intent detection
+  sherpa --search "direct preference optimization"  # Explicit search
+  sherpa --implement dpo_2023                 # Start implementing a specific paper
+  sherpa "Should I implement DPO?"            # Quick question
+  sherpa --path "learn DPO"                   # Get learning path
+  sherpa --list                               # List available papers
         """
     )
 
     parser.add_argument('question', nargs='?', help='Question about a paper')
+    parser.add_argument('--search', metavar='QUERY', help='Smart search for papers')
     parser.add_argument('--path', help='Get learning path for a goal')
     parser.add_argument('--list', action='store_true', help='List all available papers')
     parser.add_argument('-i', '--interactive', action='store_true',
@@ -367,6 +455,8 @@ Examples:
     try:
         if args.list:
             guide.list_papers()
+        elif args.search:
+            guide.smart_search_query(args.search)
         elif args.path:
             guide.show_learning_path(args.path, args.expertise)
         elif args.question:

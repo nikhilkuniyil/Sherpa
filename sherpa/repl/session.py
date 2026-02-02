@@ -20,6 +20,7 @@ from anthropic import Anthropic
 from ..db import KnowledgeBase, SessionManager, ImplementationSession
 from ..pdf import PDFParser, ParsedPaper
 from ..integrations import ClaudeCodeInterface, check_claude_code_available, ArxivHelper
+from ..engines.smart_search import SmartSearchEngine
 from ..config import get_api_key
 from .commands import get_command_help, COMMANDS
 
@@ -43,6 +44,9 @@ class ImplementationREPL:
         # Claude API for explanations - use config system
         api_key = get_api_key(prompt_if_missing=True)
         self.claude = Anthropic(api_key=api_key) if api_key else None
+
+        # Smart search engine
+        self.smart_search = SmartSearchEngine(claude_client=self.claude, kb=self.kb)
 
         # REPL setup
         history_path = Path.home() / '.sherpa' / 'repl_history'
@@ -143,6 +147,7 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
             'help': self._cmd_help,
             'papers': self._cmd_papers,
             'search': self._cmd_search,
+            'more': self._cmd_more,
             'add': self._cmd_add,
             'recommend': self._cmd_recommend,
             'clear': self._cmd_clear,
@@ -332,17 +337,7 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
 Explain clearly and concisely, referencing the paper where relevant.
 Include any relevant equations or algorithms."""
 
-        self.console.print(f"\n[dim]Thinking...[/dim]")
-
-        try:
-            response = self.claude.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1500,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            self.console.print(Markdown(response.content[0].text))
-        except Exception as e:
-            self.console.print(f"[red]Error: {e}[/red]")
+        self._stream_response(prompt)
 
     def _cmd_equation(self, args: str) -> None:
         """Show an equation"""
@@ -430,21 +425,10 @@ Answer helpfully. If they're asking for recommendations, consider their question
         if self.current_session:
             self.current_session.add_message('user', args)
 
-        self.console.print(f"\n[dim]Thinking...[/dim]")
+        answer = self._stream_response(prompt)
 
-        try:
-            response = self.claude.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1500,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            answer = response.content[0].text
-            self.console.print(Markdown(answer))
-
-            if self.current_session:
-                self.current_session.add_message('assistant', answer)
-        except Exception as e:
-            self.console.print(f"[red]Error: {e}[/red]")
+        if self.current_session and answer:
+            self.current_session.add_message('assistant', answer)
 
     def _cmd_summary(self, args: str) -> None:
         """Show paper summary"""
@@ -641,43 +625,124 @@ Write clean, well-documented code."""
         self.console.print(table)
 
     def _cmd_search(self, args: str) -> None:
-        """Search arXiv for papers"""
+        """Smart search for papers with intent classification and progressive disclosure"""
         if not args:
             self.console.print("[red]Usage: search <query>[/red]")
-            self.console.print("[dim]Example: search 'direct preference optimization'[/dim]")
+            self.console.print("[dim]Examples:[/dim]")
+            self.console.print("[dim]  search 'direct preference optimization'  (finds foundational papers)[/dim]")
+            self.console.print("[dim]  search --latest 'RLHF improvements'      (finds recent papers)[/dim]")
             return
 
-        self.console.print(f"\n[dim]Searching arXiv for '{args}'...[/dim]")
+        # Check for --latest flag
+        force_intent = None
+        if args.startswith('--latest '):
+            force_intent = "latest"
+            args = args[9:].strip()
 
-        try:
-            results = self.arxiv.search_papers(args, max_results=10)
+        self.console.print(f"\n[dim]Analyzing your search...[/dim]")
 
-            if not results:
-                self.console.print("[yellow]No papers found.[/yellow]")
-                return
+        # Use smart search engine
+        result = self.smart_search.search(args, force_intent=force_intent)
 
-            table = Table(title=f"ArXiv Results: {args}")
-            table.add_column("#", style="dim")
-            table.add_column("ArXiv ID", style="cyan")
-            table.add_column("Title")
-            table.add_column("Year")
+        self._display_search_results(result, args)
 
-            for i, paper in enumerate(results, 1):
-                table.add_row(
-                    str(i),
-                    paper['arxiv_id'],
-                    paper['title'][:50] + '...' if len(paper['title']) > 50 else paper['title'],
-                    paper['published'][:4]
-                )
+    def _cmd_more(self, args: str) -> None:
+        """Get more search results (progressive disclosure)"""
+        if not self.smart_search.state.all_results:
+            self.console.print("[yellow]No active search. Run 'search <query>' first.[/yellow]")
+            return
 
-            self.console.print(table)
-            self.console.print("\n[dim]Use 'add <arxiv_id>' to add a paper to your knowledge base[/dim]")
+        result = self.smart_search.get_more()
 
-            # Store results for quick add
-            self._last_search_results = results
+        if "error" in result:
+            self.console.print(f"[red]{result['error']}[/red]")
+            return
 
-        except Exception as e:
-            self.console.print(f"[red]Search failed: {e}[/red]")
+        self._display_search_results(result, self.smart_search.state.query, is_continuation=True)
+
+    def _display_search_results(self, result: Dict, query: str, is_continuation: bool = False) -> None:
+        """Display search results with rich formatting"""
+        papers = result.get('papers', [])
+        intent = result.get('intent', 'unknown')
+
+        if not papers:
+            if is_continuation:
+                self.console.print("[yellow]No more papers to show.[/yellow]")
+            else:
+                self.console.print("[yellow]No relevant papers found.[/yellow]")
+            return
+
+        # Show intent classification on first batch
+        if not is_continuation:
+            intent_labels = {
+                'understand': '[blue]Learning Mode[/blue] - Showing foundational papers first',
+                'latest': '[green]Latest Mode[/green] - Showing recent papers first',
+                'implement': '[yellow]Implementation Mode[/yellow] - Showing target paper and prerequisites',
+            }
+            self.console.print(f"\n{intent_labels.get(intent, '')}")
+
+        # Main results table
+        table = Table(title=f"Papers: {query}" if not is_continuation else "More Papers")
+        table.add_column("#", style="dim")
+        table.add_column("ArXiv ID", style="cyan")
+        table.add_column("Title")
+        table.add_column("Year")
+        table.add_column("Type", style="dim")
+
+        start_num = self.smart_search.state.current_batch * self.smart_search.BATCH_SIZE + 1
+        if is_continuation:
+            start_num = (self.smart_search.state.current_batch) * self.smart_search.BATCH_SIZE + 1
+
+        for i, paper in enumerate(papers):
+            category = paper.get('_category', '')
+            category_display = {
+                'foundational': '⭐ Foundation',
+                'practical': '🔧 Practical',
+                'recent': '🆕 Recent',
+                'dense': '📚 Dense',
+            }.get(category, '')
+
+            # Show why this paper was included
+            why = paper.get('_why', '')
+
+            table.add_row(
+                str(start_num + i),
+                paper['arxiv_id'],
+                paper['title'][:42] + '...' if len(paper['title']) > 42 else paper['title'],
+                paper['published'][:4],
+                category_display
+            )
+
+        self.console.print(table)
+
+        # Show paper reasons if available
+        for i, paper in enumerate(papers):
+            why = paper.get('_why', '')
+            if why:
+                self.console.print(f"  [dim]{start_num + i}. {why}[/dim]")
+
+        # Show background reading for "latest" intent
+        if result.get('background_reading'):
+            self.console.print("\n[bold]Background Reading (Foundational):[/bold]")
+            for p in result['background_reading']:
+                self.console.print(f"  - {p['arxiv_id']}: {p['title'][:50]}...")
+
+        # Show prerequisites for "implement" intent
+        if result.get('prerequisites'):
+            self.console.print("\n[bold]Prerequisites (Implement These First):[/bold]")
+            for p in result['prerequisites']:
+                self.console.print(f"  - {p['arxiv_id']}: {p['title'][:50]}...")
+
+        # Show follow-up prompt
+        if result.get('follow_up_prompt'):
+            self.console.print(f"\n[dim]{result['follow_up_prompt']}[/dim]")
+        elif not result.get('has_more'):
+            self.console.print("\n[dim]End of results.[/dim]")
+
+        self.console.print("[dim]Use 'add <arxiv_id>' to add a paper to your knowledge base[/dim]")
+
+        # Store for quick add
+        self._last_search_results = papers
 
     def _cmd_add(self, args: str) -> None:
         """Add a paper from arXiv to knowledge base"""
@@ -801,17 +866,7 @@ Recommend 3-5 papers in order of priority. For each:
 
 Be specific and practical. Focus on implementation value."""
 
-        self.console.print("\n[dim]Analyzing your interests...[/dim]")
-
-        try:
-            response = self.claude.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1500,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            self.console.print(Markdown(response.content[0].text))
-        except Exception as e:
-            self.console.print(f"[red]Error: {e}[/red]")
+        self._stream_response(prompt)
 
     def _cmd_clear(self, args: str) -> None:
         """Clear screen"""
@@ -897,15 +952,24 @@ Return as JSON array:
 Be specific! Reference actual algorithms/equations from the paper."""
 
         try:
-            response = self.claude.messages.create(
+            # Stream the response for better UX
+            import json
+            full_response = ""
+
+            self.console.print("[dim]Planning...[/dim]")
+            with self.claude.messages.stream(
                 model="claude-sonnet-4-20250514",
                 max_tokens=2000,
                 messages=[{"role": "user", "content": prompt}]
-            )
+            ) as stream:
+                for text in stream.text_stream:
+                    full_response += text
+                    # Show a simple progress indicator
+                    print(".", end="", flush=True)
 
-            # Parse JSON from response
-            import json
-            response_text = response.content[0].text
+            print()  # New line after dots
+
+            response_text = full_response
 
             # Extract JSON from markdown code blocks if present
             if "```json" in response_text:
@@ -985,6 +1049,31 @@ Be specific! Reference actual algorithms/equations from the paper."""
                     parts.append(f"- {eq.label or 'Equation'}: {eq.latex[:100]}")
 
         return '\n'.join(parts)
+
+    def _stream_response(self, prompt: str, max_tokens: int = 1500) -> str:
+        """Stream Claude's response token by token for better UX"""
+        import sys
+
+        self.console.print()  # New line before response
+
+        full_response = ""
+
+        try:
+            with self.claude.messages.stream(
+                model="claude-sonnet-4-20250514",
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}]
+            ) as stream:
+                for text in stream.text_stream:
+                    print(text, end="", flush=True)
+                    full_response += text
+
+            print()  # New line after response
+            return full_response
+
+        except Exception as e:
+            self.console.print(f"\n[red]Error: {e}[/red]")
+            return ""
 
 
 def start_repl():

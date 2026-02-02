@@ -114,9 +114,18 @@ COMMANDS = {
 
     # Discovery
     'search': {
-        'help': 'Search arXiv for papers',
-        'usage': 'search <query>',
-        'examples': ['search "direct preference optimization"', 'search RLHF 2024'],
+        'help': 'Smart search for papers (finds foundational papers by default)',
+        'usage': 'search <query> | search --latest <query>',
+        'examples': [
+            'search "direct preference optimization"',
+            'search RLHF',
+            'search --latest "preference learning 2024"'
+        ],
+    },
+    'more': {
+        'help': 'Show more papers from the last search (progressive disclosure)',
+        'usage': 'more',
+        'examples': ['more'],
     },
     'add': {
         'help': 'Add a paper from arXiv to knowledge base',
@@ -177,7 +186,7 @@ def get_command_help(command: str = None) -> str:
 
     # Show all commands grouped
     groups = {
-        'Discovery': ['search', 'add', 'recommend', 'papers'],
+        'Discovery': ['search', 'more', 'add', 'recommend', 'papers'],
         'Paper': ['load', 'fetch', 'summary'],
         'Session': ['start', 'resume', 'sessions', 'status', 'save'],
         'Understanding': ['explain', 'equation', 'algorithm', 'ask'],
