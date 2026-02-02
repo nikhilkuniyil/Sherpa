@@ -151,13 +151,13 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
         if handler:
             return handler(args)
         else:
-            # If input looks like a question, treat it as an 'ask' command
-            question_starters = ['what', 'how', 'why', 'when', 'where', 'which', 'can', 'could', 'would', 'should', 'is', 'are', 'do', 'does', 'i', 'tell', 'explain', 'describe', 'show']
-            if command.lower() in question_starters or '?' in user_input:
-                return self._cmd_ask(user_input)  # Pass the full input as question
+            # Treat any unrecognized input as natural language conversation
+            # This makes the REPL feel more like chatting with an assistant
+            if self.claude:
+                return self._cmd_ask(user_input)
             else:
                 self.console.print(f"[red]Unknown command: {command}[/red]")
-                self.console.print("[dim]Type 'help' for commands, or just ask a question naturally.[/dim]")
+                self.console.print("[dim]Type 'help' for commands. Set up API key with 'sherpa --setup' for natural conversation.[/dim]")
                 return None
 
     # === Command Handlers ===
