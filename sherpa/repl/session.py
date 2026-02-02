@@ -19,7 +19,7 @@ from anthropic import Anthropic
 
 from ..db import KnowledgeBase, SessionManager, ImplementationSession
 from ..pdf import PDFParser, ParsedPaper
-from ..integrations import ClaudeCodeInterface, check_claude_code_available
+from ..integrations import ClaudeCodeInterface, check_claude_code_available, ArxivHelper
 from ..config import get_api_key
 from .commands import get_command_help, COMMANDS
 
@@ -32,6 +32,7 @@ class ImplementationREPL:
         self.kb = KnowledgeBase()
         self.session_manager = SessionManager(self.kb)
         self.pdf_parser = PDFParser()
+        self.arxiv = ArxivHelper()
 
         # Current state
         self.current_paper: Optional[Dict] = None
@@ -141,6 +142,9 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
             'progress': self._cmd_progress,
             'help': self._cmd_help,
             'papers': self._cmd_papers,
+            'search': self._cmd_search,
+            'add': self._cmd_add,
+            'recommend': self._cmd_recommend,
             'clear': self._cmd_clear,
             'save': self._cmd_save,
             'exit': lambda _: 'exit',
@@ -636,6 +640,179 @@ Write clean, well-documented code."""
 
         self.console.print(table)
 
+    def _cmd_search(self, args: str) -> None:
+        """Search arXiv for papers"""
+        if not args:
+            self.console.print("[red]Usage: search <query>[/red]")
+            self.console.print("[dim]Example: search 'direct preference optimization'[/dim]")
+            return
+
+        self.console.print(f"\n[dim]Searching arXiv for '{args}'...[/dim]")
+
+        try:
+            results = self.arxiv.search_papers(args, max_results=10)
+
+            if not results:
+                self.console.print("[yellow]No papers found.[/yellow]")
+                return
+
+            table = Table(title=f"ArXiv Results: {args}")
+            table.add_column("#", style="dim")
+            table.add_column("ArXiv ID", style="cyan")
+            table.add_column("Title")
+            table.add_column("Year")
+
+            for i, paper in enumerate(results, 1):
+                table.add_row(
+                    str(i),
+                    paper['arxiv_id'],
+                    paper['title'][:50] + '...' if len(paper['title']) > 50 else paper['title'],
+                    paper['published'][:4]
+                )
+
+            self.console.print(table)
+            self.console.print("\n[dim]Use 'add <arxiv_id>' to add a paper to your knowledge base[/dim]")
+
+            # Store results for quick add
+            self._last_search_results = results
+
+        except Exception as e:
+            self.console.print(f"[red]Search failed: {e}[/red]")
+
+    def _cmd_add(self, args: str) -> None:
+        """Add a paper from arXiv to knowledge base"""
+        if not args:
+            self.console.print("[red]Usage: add <arxiv_id>[/red]")
+            self.console.print("[dim]Example: add 2305.18290[/dim]")
+            return
+
+        arxiv_id = args.strip()
+
+        # Check if already in KB
+        existing = self.kb.get_all_papers()
+        for p in existing:
+            if p.get('arxiv_id') == arxiv_id:
+                self.console.print(f"[yellow]Paper already in knowledge base: {p['paper_id']}[/yellow]")
+                return
+
+        self.console.print(f"\n[dim]Fetching paper {arxiv_id} from arXiv...[/dim]")
+
+        try:
+            # Fetch from arXiv
+            paper_data = self.arxiv.get_paper_by_id(arxiv_id)
+
+            # Generate paper_id from title
+            title_words = paper_data['title'].lower().split()[:3]
+            paper_id = '_'.join(w for w in title_words if w.isalnum())[:20] + f"_{paper_data['published'][:4]}"
+
+            # Estimate difficulty based on abstract keywords
+            abstract_lower = paper_data['abstract'].lower()
+            if any(w in abstract_lower for w in ['theoretical', 'prove', 'theorem', 'bounds']):
+                difficulty = 'advanced'
+            elif any(w in abstract_lower for w in ['novel', 'state-of-the-art', 'outperforms']):
+                difficulty = 'intermediate'
+            else:
+                difficulty = 'intermediate'
+
+            # Create KB entry
+            kb_entry = {
+                'paper_id': paper_id,
+                'title': paper_data['title'],
+                'arxiv_id': arxiv_id,
+                'authors': ', '.join(paper_data['authors'][:3]) + ('...' if len(paper_data['authors']) > 3 else ''),
+                'year': int(paper_data['published'][:4]),
+                'difficulty': difficulty,
+                'educational_value': 'high',
+                'production_relevance': 'medium',
+                'description': paper_data['abstract'][:500],
+                'pdf_url': paper_data['pdf_url'],
+            }
+
+            # Use Claude to extract key concepts if available
+            if self.claude:
+                self.console.print("[dim]Analyzing paper...[/dim]")
+                try:
+                    response = self.claude.messages.create(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=500,
+                        messages=[{"role": "user", "content": f"""Analyze this ML paper abstract and extract:
+1. 3-5 key concepts (as lowercase_underscore terms)
+2. A one-sentence "why implement this" recommendation
+3. Estimated implementation time in hours (e.g., "8-12")
+
+Abstract: {paper_data['abstract']}
+
+Respond in JSON format:
+{{"key_concepts": ["concept1", "concept2"], "why_implement": "...", "implementation_time": "X-Y"}}"""}]
+                    )
+                    import json
+                    analysis = json.loads(response.content[0].text)
+                    kb_entry['key_concepts'] = analysis.get('key_concepts', [])
+                    kb_entry['why_implement'] = analysis.get('why_implement', '')
+                    kb_entry['implementation_time_hours'] = analysis.get('implementation_time', '8-16')
+                except:
+                    kb_entry['key_concepts'] = []
+                    kb_entry['implementation_time_hours'] = '8-16'
+
+            # Add to knowledge base
+            if self.kb.add_paper(kb_entry):
+                self.console.print(f"\n[green]Added paper![/green]")
+                self.console.print(f"  ID: {paper_id}")
+                self.console.print(f"  Title: {paper_data['title'][:60]}...")
+                self.console.print(f"  Difficulty: {difficulty}")
+                self.console.print(f"\n[dim]Use 'load {paper_id}' to start working with it[/dim]")
+            else:
+                self.console.print("[red]Failed to add paper to knowledge base.[/red]")
+
+        except Exception as e:
+            self.console.print(f"[red]Failed to fetch paper: {e}[/red]")
+
+    def _cmd_recommend(self, args: str) -> None:
+        """Get personalized paper recommendations"""
+        if not self.claude:
+            self.console.print("[red]Claude API required for recommendations.[/red]")
+            return
+
+        # Get user's context
+        sessions = self.session_manager.list_sessions(status='completed')
+        completed_papers = [s['paper_id'] for s in sessions]
+
+        all_papers = self.kb.get_all_papers()
+        paper_summaries = "\n".join([
+            f"- {p['paper_id']}: {p['title']} (difficulty: {p['difficulty']}, value: {p.get('educational_value', 'unknown')})"
+            for p in all_papers
+        ])
+
+        interest = args if args else "ML research and implementation"
+
+        prompt = f"""You are Sherpa, an AI research advisor. Based on the user's interests and progress, recommend papers to implement.
+
+User's interest: {interest}
+Papers already completed: {completed_papers if completed_papers else 'None yet'}
+
+Available papers:
+{paper_summaries}
+
+Recommend 3-5 papers in order of priority. For each:
+1. Paper ID and title
+2. Why it's a good fit for their interests
+3. What they'll learn
+4. Prerequisites (if any)
+
+Be specific and practical. Focus on implementation value."""
+
+        self.console.print("\n[dim]Analyzing your interests...[/dim]")
+
+        try:
+            response = self.claude.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1500,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            self.console.print(Markdown(response.content[0].text))
+        except Exception as e:
+            self.console.print(f"[red]Error: {e}[/red]")
+
     def _cmd_clear(self, args: str) -> None:
         """Clear screen"""
         os.system('clear' if os.name != 'nt' else 'cls')
@@ -664,7 +841,11 @@ Write clean, well-documented code."""
         if not self.current_paper:
             return []
 
-        # Generic stages based on paper type
+        # If we have Claude and parsed content, generate smart stages
+        if self.claude and self.parsed_content:
+            return self._generate_smart_stages()
+
+        # Fallback to generic stages
         stages = [
             {'stage_name': 'Setup', 'description': 'Create project structure and dependencies', 'status': 'not_started'},
             {'stage_name': 'Data', 'description': 'Implement data loading and preprocessing', 'status': 'not_started'},
@@ -673,7 +854,7 @@ Write clean, well-documented code."""
             {'stage_name': 'Evaluation', 'description': 'Implement evaluation and metrics', 'status': 'not_started'},
         ]
 
-        # Customize based on paper
+        # Customize based on paper keywords
         paper_id = self.current_paper.get('paper_id', '').lower()
         if 'dpo' in paper_id or 'preference' in paper_id:
             stages[1]['description'] = 'Implement preference dataset (chosen/rejected pairs)'
@@ -681,6 +862,86 @@ Write clean, well-documented code."""
             stages.insert(3, {'stage_name': 'Reference Model', 'description': 'Set up reference model for KL constraint', 'status': 'not_started'})
 
         return stages
+
+    def _generate_smart_stages(self) -> List[Dict]:
+        """Generate paper-specific implementation stages using Claude"""
+        self.console.print("[dim]Generating paper-specific implementation plan...[/dim]")
+
+        # Build context from parsed content
+        algorithms = "\n".join([f"- {a.name}: {a.pseudocode[:200]}..." for a in self.parsed_content.algorithms[:5]])
+        equations = "\n".join([f"- {e.label or 'Eq'}: {e.latex[:100]}" for e in self.parsed_content.equations[:8]])
+
+        prompt = f"""Analyze this ML paper and create a detailed implementation plan.
+
+Paper: {self.current_paper['title']}
+
+Abstract: {self.parsed_content.abstract[:1000]}
+
+Key Algorithms:
+{algorithms if algorithms else 'Not explicitly extracted'}
+
+Key Equations:
+{equations if equations else 'Not explicitly extracted'}
+
+Create 5-7 implementation stages. Each stage should be:
+- Specific to THIS paper (not generic)
+- Focused on one clear component
+- Ordered from foundational to advanced
+
+Return as JSON array:
+[
+  {{"stage_name": "Short Name", "description": "What to implement and key details", "key_files": ["file1.py"], "estimated_hours": 2}},
+  ...
+]
+
+Be specific! Reference actual algorithms/equations from the paper."""
+
+        try:
+            response = self.claude.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=2000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            # Parse JSON from response
+            import json
+            response_text = response.content[0].text
+
+            # Extract JSON from markdown code blocks if present
+            if "```json" in response_text:
+                json_start = response_text.find("```json") + 7
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end].strip()
+            elif "```" in response_text:
+                json_start = response_text.find("```") + 3
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end].strip()
+
+            stages_data = json.loads(response_text)
+
+            # Convert to our format
+            stages = []
+            for s in stages_data:
+                stages.append({
+                    'stage_name': s.get('stage_name', 'Stage'),
+                    'description': s.get('description', ''),
+                    'key_files': s.get('key_files', []),
+                    'estimated_hours': s.get('estimated_hours', 2),
+                    'status': 'not_started'
+                })
+
+            return stages
+
+        except Exception as e:
+            self.console.print(f"[yellow]Smart planning failed, using defaults: {e}[/yellow]")
+            # Fall back to generic stages
+            return [
+                {'stage_name': 'Setup', 'description': 'Create project structure and dependencies', 'status': 'not_started'},
+                {'stage_name': 'Data', 'description': 'Implement data loading and preprocessing', 'status': 'not_started'},
+                {'stage_name': 'Model', 'description': 'Implement core model/algorithm', 'status': 'not_started'},
+                {'stage_name': 'Training', 'description': 'Implement training loop', 'status': 'not_started'},
+                {'stage_name': 'Evaluation', 'description': 'Implement evaluation and metrics', 'status': 'not_started'},
+            ]
 
     def _show_stages(self, stages: List[Dict] = None):
         """Display implementation stages"""

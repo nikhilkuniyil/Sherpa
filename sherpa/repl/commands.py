@@ -112,6 +112,23 @@ COMMANDS = {
         'examples': ['progress'],
     },
 
+    # Discovery
+    'search': {
+        'help': 'Search arXiv for papers',
+        'usage': 'search <query>',
+        'examples': ['search "direct preference optimization"', 'search RLHF 2024'],
+    },
+    'add': {
+        'help': 'Add a paper from arXiv to knowledge base',
+        'usage': 'add <arxiv_id>',
+        'examples': ['add 2305.18290', 'add 2401.12345'],
+    },
+    'recommend': {
+        'help': 'Get personalized paper recommendations',
+        'usage': 'recommend [interest]',
+        'examples': ['recommend', 'recommend "reinforcement learning for LLMs"'],
+    },
+
     # Utilities
     'help': {
         'help': 'Show available commands',
@@ -119,7 +136,7 @@ COMMANDS = {
         'examples': ['help', 'help explain'],
     },
     'papers': {
-        'help': 'List available papers in knowledge base',
+        'help': 'List papers in knowledge base',
         'usage': 'papers',
         'examples': ['papers'],
     },
@@ -160,7 +177,8 @@ def get_command_help(command: str = None) -> str:
 
     # Show all commands grouped
     groups = {
-        'Paper Management': ['load', 'fetch', 'papers', 'summary'],
+        'Discovery': ['search', 'add', 'recommend', 'papers'],
+        'Paper': ['load', 'fetch', 'summary'],
         'Session': ['start', 'resume', 'sessions', 'status', 'save'],
         'Understanding': ['explain', 'equation', 'algorithm', 'ask'],
         'Implementation': ['plan', 'stage', 'implement', 'code', 'files'],
