@@ -12,7 +12,7 @@ from pathlib import Path
 
 def get_default_db_path() -> str:
     """Get the default database path relative to project root."""
-    # Go up from paper_coach/db/ to project root, then into data/
+    # Go up from sherpa/db/ to project root, then into data/
     project_root = Path(__file__).parent.parent.parent
     return str(project_root / "data" / "papers.db")
 

@@ -1,5 +1,5 @@
 """
-Allow running as: python -m paper_coach
+Allow running as: python -m sherpa
 """
 
 from .cli import main

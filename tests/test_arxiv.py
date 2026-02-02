@@ -4,7 +4,7 @@ Test suite for ArXiv helper
 """
 
 import pytest
-from paper_coach.integrations import ArxivHelper
+from sherpa.integrations import ArxivHelper
 
 
 def test_arxiv_search():

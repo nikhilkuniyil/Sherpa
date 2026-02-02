@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Test suite for Paper Implementation Coach
+Test suite for Sherpa
 """
 
 import pytest
 import tempfile
 import os
 
-from paper_coach.db import KnowledgeBase
-from paper_coach.db.seed import seed_post_training_papers
-from paper_coach.engines import RecommendationEngine
+from sherpa.db import KnowledgeBase
+from sherpa.db.seed import seed_post_training_papers
+from sherpa.engines import RecommendationEngine
 
 
 class TestKnowledgeBase:
@@ -60,7 +60,7 @@ class TestRecommendationEngine:
 def run_all_tests():
     """Run all tests manually"""
     print("\n" + "=" * 70)
-    print("Paper Implementation Coach - Test Suite")
+    print("Sherpa - Test Suite")
     print("=" * 70)
 
     tests_passed = 0

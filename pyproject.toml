@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "paper-coach"
+name = "sherpa"
 version = "0.1.0"
-description = "An AI-powered CLI tool that helps ML researchers decide which academic papers to implement"
+description = "An AI-powered CLI tool that helps ML researchers implement academic papers"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
     {name = "Nikhil Kuniyil"}
 ]
-keywords = ["ml", "machine-learning", "papers", "research", "ai", "llm"]
+keywords = ["ml", "machine-learning", "papers", "research", "ai", "llm", "implementation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -37,15 +37,15 @@ dev = [
 ]
 
 [project.scripts]
-paper-coach = "paper_coach.cli:main"
+sherpa = "sherpa.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/nikhilkuniyil/paper-implementation-coach"
-Repository = "https://github.com/nikhilkuniyil/paper-implementation-coach"
+Homepage = "https://github.com/nikhilkuniyil/Sherpa"
+Repository = "https://github.com/nikhilkuniyil/Sherpa"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["paper_coach*"]
+include = ["sherpa*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

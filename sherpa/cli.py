@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Paper Implementation Coach - CLI Interface
+Sherpa - Paper Implementation Coach CLI
 
 Usage:
-    python -m paper_coach "Should I implement DPO?"
-    python -m paper_coach --path "learn DPO"
-    python -m paper_coach --list
-    python -m paper_coach --agentic --path "learn DPO"  # Use Claude for reasoning
+    sherpa "Should I implement DPO?"
+    sherpa --path "learn DPO"
+    sherpa --list
+    sherpa --agentic --path "learn DPO"  # Use Claude for reasoning
 """
 
 import sys
@@ -18,8 +18,8 @@ from .engines import RecommendationEngine, AgenticRecommendationEngine
 from .db import KnowledgeBase
 
 
-class PaperCoach:
-    """Main CLI interface for the paper coach"""
+class Sherpa:
+    """Main CLI interface for Sherpa"""
 
     def __init__(self, use_agentic=False):
         self.kb = KnowledgeBase()
@@ -307,15 +307,15 @@ def main():
     """Main CLI entry point"""
 
     parser = argparse.ArgumentParser(
-        description='Paper Implementation Coach - Decide which ML papers to implement',
+        description='Sherpa - Your guide to implementing ML papers',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m paper_coach "Should I implement DPO?"
-  python -m paper_coach "Is ORPO worth implementing?"
-  python -m paper_coach --path "learn DPO"
-  python -m paper_coach --agentic --path "learn DPO"  # Use Claude for smarter reasoning
-  python -m paper_coach --list
+  sherpa "Should I implement DPO?"
+  sherpa "Is ORPO worth implementing?"
+  sherpa --path "learn DPO"
+  sherpa --agentic --path "learn DPO"  # Use Claude for smarter reasoning
+  sherpa --list
         """
     )
 
@@ -330,13 +330,13 @@ Examples:
 
     args = parser.parse_args()
 
-    coach = PaperCoach(use_agentic=args.agentic)
+    guide = Sherpa(use_agentic=args.agentic)
 
     try:
         if args.list:
-            coach.list_papers()
+            guide.list_papers()
         elif args.path:
-            coach.show_learning_path(args.path, args.expertise)
+            guide.show_learning_path(args.path, args.expertise)
         elif args.question:
             # For now, assume no prerequisites implemented
             # Later we can track this in a config file
@@ -344,12 +344,12 @@ Examples:
                 'implemented_papers': [],
                 'expertise_level': args.expertise
             }
-            coach.ask(args.question, context)
+            guide.ask(args.question, context)
         else:
             parser.print_help()
 
     finally:
-        coach.close()
+        guide.close()
 
 
 if __name__ == "__main__":
