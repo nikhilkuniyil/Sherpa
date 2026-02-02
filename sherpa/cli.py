@@ -312,16 +312,20 @@ def main():
         epilog="""
 Examples:
   sherpa "Should I implement DPO?"
-  sherpa "Is ORPO worth implementing?"
   sherpa --path "learn DPO"
-  sherpa --agentic --path "learn DPO"  # Use Claude for smarter reasoning
   sherpa --list
+  sherpa -i                              # Start interactive implementation mode
+  sherpa --implement dpo_2023            # Start implementing a specific paper
         """
     )
 
     parser.add_argument('question', nargs='?', help='Question about a paper')
     parser.add_argument('--path', help='Get learning path for a goal')
     parser.add_argument('--list', action='store_true', help='List all available papers')
+    parser.add_argument('-i', '--interactive', action='store_true',
+                        help='Start interactive implementation REPL')
+    parser.add_argument('--implement', metavar='PAPER',
+                        help='Start implementing a specific paper')
     parser.add_argument('--agentic', action='store_true',
                         help='Use Claude API for intelligent reasoning (requires ANTHROPIC_API_KEY)')
     parser.add_argument('--expertise', default='intermediate',
@@ -329,6 +333,16 @@ Examples:
                         help='Your expertise level')
 
     args = parser.parse_args()
+
+    # Interactive mode
+    if args.interactive or args.implement:
+        from .repl import ImplementationREPL
+        repl = ImplementationREPL()
+        if args.implement:
+            # Pre-load the specified paper
+            repl._cmd_load(args.implement)
+        repl.run()
+        return
 
     guide = Sherpa(use_agentic=args.agentic)
 

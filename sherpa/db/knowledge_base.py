@@ -89,6 +89,64 @@ class KnowledgeBase:
             )
         """)
 
+        # Implementation sessions - tracks an implementation project
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS implementation_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT UNIQUE NOT NULL,
+                paper_id TEXT NOT NULL,
+                project_path TEXT,
+                status TEXT CHECK(status IN ('planning', 'in_progress', 'paused', 'completed', 'abandoned')),
+                current_stage INTEGER DEFAULT 0,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_active_at TIMESTAMP,
+                notes TEXT,
+                context_json TEXT,
+                FOREIGN KEY (paper_id) REFERENCES papers(paper_id)
+            )
+        """)
+
+        # Progress tracking within a session
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session_progress (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                stage_name TEXT NOT NULL,
+                stage_order INTEGER NOT NULL,
+                status TEXT CHECK(status IN ('not_started', 'in_progress', 'completed', 'skipped')),
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                notes TEXT,
+                files_created TEXT,  -- JSON array of file paths
+                FOREIGN KEY (session_id) REFERENCES implementation_sessions(session_id)
+            )
+        """)
+
+        # Conversation history for context persistence
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT CHECK(role IN ('user', 'assistant', 'system')),
+                content TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                metadata_json TEXT,
+                FOREIGN KEY (session_id) REFERENCES implementation_sessions(session_id)
+            )
+        """)
+
+        # Cached parsed PDF content
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS paper_content (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                paper_id TEXT UNIQUE NOT NULL,
+                pdf_path TEXT,
+                parsed_json TEXT,
+                extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (paper_id) REFERENCES papers(paper_id)
+            )
+        """)
+
         self.conn.commit()
 
     def add_paper(self, paper_data: Dict) -> bool:
