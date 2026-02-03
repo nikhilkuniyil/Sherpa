@@ -4,11 +4,13 @@ Smart paper search with intent classification and progressive disclosure.
 """
 
 import json
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, field
-from anthropic import Anthropic
 
 from ..integrations import ArxivHelper
+
+if TYPE_CHECKING:
+    from ..llm import UnifiedLLMClient
 
 
 @dataclass
@@ -33,7 +35,7 @@ class SmartSearchEngine:
 
     BATCH_SIZE = 3
 
-    def __init__(self, claude_client: Optional[Anthropic] = None, kb=None):
+    def __init__(self, claude_client: Optional['UnifiedLLMClient'] = None, kb=None):
         self.claude = claude_client
         self.kb = kb
         self.arxiv = ArxivHelper()

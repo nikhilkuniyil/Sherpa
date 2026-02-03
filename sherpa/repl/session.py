@@ -15,14 +15,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.markdown import Markdown
-from anthropic import Anthropic
-
 from ..db import KnowledgeBase, SessionManager, ImplementationSession
 from ..pdf import PDFParser, ParsedPaper
 from ..integrations import ClaudeCodeInterface, check_claude_code_available, ArxivHelper
 from ..engines.smart_search import SmartSearchEngine
 from ..tutoring import TutoringEngine, TutoringResponse, TutoringPhase
 from ..config import get_api_key
+from ..llm import UnifiedLLMClient, get_preferred_provider
 from .commands import get_command_help, COMMANDS
 
 
@@ -42,9 +41,10 @@ class ImplementationREPL:
         self.current_session: Optional[ImplementationSession] = None
         self.claude_code: Optional[ClaudeCodeInterface] = None
 
-        # Claude API for explanations - use config system
+        # LLM client - supports Anthropic, OpenAI, Gemini
         api_key = get_api_key(prompt_if_missing=True)
-        self.claude = Anthropic(api_key=api_key) if api_key else None
+        self.claude = UnifiedLLMClient() if api_key else None
+        self.llm_provider = get_preferred_provider() or "none"
 
         # Smart search engine
         self.smart_search = SmartSearchEngine(claude_client=self.claude, kb=self.kb)
@@ -110,10 +110,16 @@ Commands: load, learn, explain, help | Type 'help' for all commands[/dim]
 """
         self.console.print(Panel(welcome, border_style="blue"))
 
-        if self.claude:
-            self.console.print("[green]Claude API connected.[/green]")
+        if self.claude and self.claude.is_available():
+            provider_names = {
+                'anthropic': 'Claude (Anthropic)',
+                'openai': 'GPT-4 (OpenAI)',
+                'gemini': 'Gemini (Google)',
+            }
+            name = provider_names.get(self.llm_provider, self.llm_provider)
+            self.console.print(f"[green]LLM connected: {name}[/green]")
         else:
-            self.console.print("[yellow]Note: No API key configured. Run 'sherpa --setup' or set ANTHROPIC_API_KEY.[/yellow]")
+            self.console.print("[yellow]Note: No API key configured. Run 'sherpa --setup' to configure.[/yellow]")
 
         if not check_claude_code_available():
             self.console.print("[dim]Note: Claude Code CLI not found. 'implement' command unavailable.[/dim]")

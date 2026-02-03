@@ -19,7 +19,7 @@ from .state import (
 from . import prompts
 
 if TYPE_CHECKING:
-    from anthropic import Anthropic
+    from ..llm import UnifiedLLMClient
 
 
 class TutoringEngine:
@@ -27,7 +27,7 @@ class TutoringEngine:
 
     def __init__(
         self,
-        claude_client: 'Anthropic',
+        claude_client: 'UnifiedLLMClient',
         mode: str = 'tutorial',
         paper_title: str = '',
         paper_context: str = ''

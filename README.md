@@ -30,7 +30,7 @@ python -m sherpa --setup
 ### Requirements
 
 - Python 3.9+
-- Anthropic API key (for Claude-powered features)
+- API key from any supported provider: Anthropic, OpenAI, or Google Gemini
 
 ## Quick Start
 
@@ -130,15 +130,29 @@ Sherpa stores configuration in `~/.sherpa/`:
 └── pdfs/            # Cached paper PDFs
 ```
 
+### Supported LLM Providers
+
+Sherpa supports multiple LLM providers:
+
+| Provider | Models | Environment Variable |
+|----------|--------|---------------------|
+| **Anthropic** | Claude Sonnet 4 | `ANTHROPIC_API_KEY` |
+| **OpenAI** | GPT-4o | `OPENAI_API_KEY` |
+| **Google** | Gemini 1.5 Pro | `GOOGLE_API_KEY` |
+
 ### Setting Up API Key
 
 ```bash
-# Option 1: Interactive setup
+# Interactive setup (choose your provider)
 sherpa --setup
 
-# Option 2: Environment variable
-export ANTHROPIC_API_KEY=your-key-here
+# Or set environment variable directly
+export ANTHROPIC_API_KEY=your-key-here   # Anthropic
+export OPENAI_API_KEY=your-key-here      # OpenAI
+export GOOGLE_API_KEY=your-key-here      # Google Gemini
 ```
+
+The interactive setup lets you choose which provider to use and saves your preference.
 
 ## Available Papers
 

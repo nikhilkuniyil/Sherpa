@@ -16,7 +16,7 @@ from typing import Dict
 
 from .engines import RecommendationEngine, AgenticRecommendationEngine, SmartSearchEngine
 from .db import KnowledgeBase
-from anthropic import Anthropic
+from .llm import UnifiedLLMClient, get_preferred_provider, get_api_key_for_provider
 
 
 class Sherpa:
@@ -26,26 +26,33 @@ class Sherpa:
         self.kb = KnowledgeBase()
 
         # Try to use agentic engine if requested or if API key available
-        api_key = os.getenv('ANTHROPIC_API_KEY')
-        self.agentic_available = api_key is not None
+        self.llm_provider = get_preferred_provider()
+        self.agentic_available = self.llm_provider is not None
 
-        # Initialize Claude client for smart search
-        self.claude = Anthropic(api_key=api_key) if api_key else None
+        # Initialize LLM client for smart search (supports multiple providers)
+        self.claude = UnifiedLLMClient() if self.agentic_available else None
         self.smart_search = SmartSearchEngine(claude_client=self.claude, kb=self.kb)
+
+        provider_names = {
+            'anthropic': 'Claude',
+            'openai': 'GPT-4',
+            'gemini': 'Gemini',
+        }
+        provider_display = provider_names.get(self.llm_provider, self.llm_provider) if self.llm_provider else None
 
         if use_agentic or self.agentic_available:
             self.agentic_engine = AgenticRecommendationEngine()
             if self.agentic_engine.client:
                 self.use_agentic = True
-                print("Using Agentic Mode (Claude-powered reasoning)")
+                print(f"Using Agentic Mode ({provider_display}-powered reasoning)")
             else:
                 self.use_agentic = False
                 self.engine = RecommendationEngine()
-                print("Using Rule-based Mode (set ANTHROPIC_API_KEY for agentic mode)")
+                print("Using Rule-based Mode (run 'sherpa --setup' to configure LLM)")
         else:
             self.use_agentic = False
             self.engine = RecommendationEngine()
-            print("Using Rule-based Mode (use --agentic flag for Claude-powered reasoning)")
+            print("Using Rule-based Mode (use --agentic flag for AI-powered reasoning)")
 
     def ask(self, question: str, context: dict = None):
         """Ask the coach about a paper - uses smart search for broad queries"""

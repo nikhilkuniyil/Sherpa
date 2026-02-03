@@ -1,10 +1,14 @@
 # Core dependencies
 arxiv>=2.0.0
-anthropic>=0.18.0
 PyMuPDF>=1.23.0
 httpx>=0.25.0
 prompt-toolkit>=3.0.0
 rich>=13.0.0
+
+# LLM providers (install at least one)
+anthropic>=0.18.0        # Anthropic Claude
+openai>=1.0.0            # OpenAI GPT-4 (optional)
+google-generativeai>=0.3.0  # Google Gemini (optional)
 
 # Development dependencies (optional)
 pytest>=7.0.0

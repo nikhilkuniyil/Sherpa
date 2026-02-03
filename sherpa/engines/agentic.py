@@ -1,32 +1,33 @@
 #!/usr/bin/env python3
 """
 Agentic Recommendation Engine
-Uses Claude API to reason about paper recommendations and learning paths
+Uses LLM API to reason about paper recommendations and learning paths
 """
 
 import os
 import json
 from typing import Dict, List, Optional
-from anthropic import Anthropic
 from ..db import KnowledgeBase
 from ..integrations import ArxivHelper
+from ..llm import UnifiedLLMClient, get_preferred_provider
 
 
 class AgenticRecommendationEngine:
-    """Uses Claude to make intelligent recommendations"""
+    """Uses LLM to make intelligent recommendations"""
 
     def __init__(self, api_key: Optional[str] = None):
         self.kb = KnowledgeBase()
         self.arxiv = ArxivHelper()
 
-        # Initialize Anthropic client
-        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
-        if not self.api_key:
-            print("Warning: No ANTHROPIC_API_KEY found. Agentic features disabled.")
-            print("   Set with: export ANTHROPIC_API_KEY='your-key-here'")
+        # Initialize unified LLM client (supports Anthropic, OpenAI, Gemini)
+        self.provider = get_preferred_provider()
+        if not self.provider:
+            print("Warning: No LLM API key found. Agentic features disabled.")
+            print("   Run: sherpa --setup")
             self.client = None
         else:
-            self.client = Anthropic(api_key=self.api_key)
+            llm = UnifiedLLMClient()
+            self.client = llm if llm.is_available() else None
 
     def get_learning_path_agentic(self, goal: str, user_context: Optional[Dict] = None) -> Dict:
         """

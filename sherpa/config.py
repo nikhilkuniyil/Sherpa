@@ -46,46 +46,80 @@ def save_config(config: Dict[str, Any]) -> None:
 
 def get_api_key(prompt_if_missing: bool = True) -> Optional[str]:
     """
-    Get the Anthropic API key from various sources.
+    Get an API key from any configured provider.
 
     Priority:
-    1. Environment variable ANTHROPIC_API_KEY
-    2. Config file ~/.sherpa/config.json
+    1. Preferred provider from config
+    2. Any available provider (Anthropic, OpenAI, Gemini)
     3. Interactive prompt (if prompt_if_missing=True)
 
     Returns:
         API key string or None if not found/provided
     """
-    # 1. Check environment variable
-    api_key = os.getenv('ANTHROPIC_API_KEY')
-    if api_key:
-        return api_key
+    from .llm import get_api_key_for_provider, get_preferred_provider, PROVIDERS
 
-    # 2. Check config file
-    config = load_config()
-    api_key = config.get('anthropic_api_key')
-    if api_key:
-        return api_key
+    # Check preferred provider first
+    preferred = get_preferred_provider()
+    if preferred:
+        api_key = get_api_key_for_provider(preferred)
+        if api_key:
+            return api_key
 
-    # 3. Prompt user if allowed
+    # Check all providers
+    for provider in PROVIDERS:
+        api_key = get_api_key_for_provider(provider)
+        if api_key:
+            return api_key
+
+    # Prompt user if allowed
     if prompt_if_missing:
         return prompt_for_api_key()
 
     return None
 
 
-def prompt_for_api_key() -> Optional[str]:
+def prompt_for_api_key(provider: str = None) -> Optional[str]:
     """
     Interactively prompt user for API key and offer to save it.
+
+    Args:
+        provider: Specific provider to configure. If None, user chooses.
 
     Returns:
         API key string or None if user declines
     """
+    from .llm import PROVIDERS
+
     print("\n" + "=" * 60)
-    print("Anthropic API Key Required")
+    print("LLM API Key Setup")
     print("=" * 60)
-    print("\nSherpa needs an Anthropic API key for AI-powered features.")
-    print("Get one at: https://console.anthropic.com/settings/keys")
+
+    # Let user choose provider if not specified
+    if not provider:
+        print("\nSherpa supports multiple LLM providers:")
+        providers_list = list(PROVIDERS.keys())
+        for i, p in enumerate(providers_list, 1):
+            info = PROVIDERS[p]
+            print(f"  {i}. {info['display_name']}")
+
+        print()
+        try:
+            choice = input(f"Choose provider [1-{len(providers_list)}] (default: 1): ").strip()
+            if not choice:
+                choice = "1"
+            idx = int(choice) - 1
+            if 0 <= idx < len(providers_list):
+                provider = providers_list[idx]
+            else:
+                print("Invalid choice.")
+                return None
+        except (ValueError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return None
+
+    info = PROVIDERS[provider]
+    print(f"\n{info['display_name']} selected.")
+    print(f"Get your API key at: {info['url']}")
     print("\nYour key will be stored locally in ~/.sherpa/config.json")
     print("(This file is private and never shared or committed)")
     print()
@@ -98,8 +132,9 @@ def prompt_for_api_key() -> Optional[str]:
             return None
 
         # Validate format (basic check)
-        if not api_key.startswith('sk-ant-'):
-            print("\nWarning: Key doesn't look like an Anthropic key (should start with 'sk-ant-')")
+        expected_prefix = info['key_prefix']
+        if not api_key.startswith(expected_prefix):
+            print(f"\nWarning: Key doesn't look like a {provider} key (expected prefix: '{expected_prefix}')")
             confirm = input("Save anyway? [y/N]: ").strip().lower()
             if confirm != 'y':
                 return None
@@ -109,9 +144,10 @@ def prompt_for_api_key() -> Optional[str]:
 
         if save != 'n':
             config = load_config()
-            config['anthropic_api_key'] = api_key
+            config[info['config_key']] = api_key
+            config['preferred_provider'] = provider
             save_config(config)
-            print("Key saved successfully!")
+            print(f"Key saved! {info['display_name']} set as preferred provider.")
         else:
             print("Key will only be used for this session.")
 
@@ -122,15 +158,35 @@ def prompt_for_api_key() -> Optional[str]:
         return None
 
 
-def clear_api_key() -> None:
+def clear_api_key(provider: str = None) -> None:
     """Remove stored API key from config"""
+    from .llm import PROVIDERS
+
     config = load_config()
-    if 'anthropic_api_key' in config:
-        del config['anthropic_api_key']
-        save_config(config)
-        print("API key removed from config.")
+
+    if provider:
+        # Clear specific provider
+        if provider in PROVIDERS:
+            key = PROVIDERS[provider]['config_key']
+            if key in config:
+                del config[key]
+                save_config(config)
+                print(f"{provider} API key removed from config.")
+            else:
+                print(f"No stored {provider} API key found.")
     else:
-        print("No stored API key found.")
+        # Clear all API keys
+        removed = []
+        for p, info in PROVIDERS.items():
+            if info['config_key'] in config:
+                del config[info['config_key']]
+                removed.append(p)
+
+        if removed:
+            save_config(config)
+            print(f"Removed API keys for: {', '.join(removed)}")
+        else:
+            print("No stored API keys found.")
 
 
 def get_config_value(key: str, default: Any = None) -> Any:
