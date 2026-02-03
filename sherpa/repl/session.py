@@ -21,6 +21,7 @@ from ..db import KnowledgeBase, SessionManager, ImplementationSession
 from ..pdf import PDFParser, ParsedPaper
 from ..integrations import ClaudeCodeInterface, check_claude_code_available, ArxivHelper
 from ..engines.smart_search import SmartSearchEngine
+from ..tutoring import TutoringEngine, TutoringResponse, TutoringPhase
 from ..config import get_api_key
 from .commands import get_command_help, COMMANDS
 
@@ -28,7 +29,7 @@ from .commands import get_command_help, COMMANDS
 class ImplementationREPL:
     """Interactive REPL for paper implementation coaching"""
 
-    def __init__(self):
+    def __init__(self, mode: str = 'tutorial'):
         self.console = Console()
         self.kb = KnowledgeBase()
         self.session_manager = SessionManager(self.kb)
@@ -47,6 +48,15 @@ class ImplementationREPL:
 
         # Smart search engine
         self.smart_search = SmartSearchEngine(claude_client=self.claude, kb=self.kb)
+
+        # Interactive tutoring engine
+        self.tutoring_mode = mode
+        self.tutoring_engine = TutoringEngine(
+            claude_client=self.claude,
+            mode=mode,
+            paper_title='',
+            paper_context=''
+        ) if self.claude else None
 
         # REPL setup
         history_path = Path.home() / '.sherpa' / 'repl_history'
@@ -84,13 +94,19 @@ class ImplementationREPL:
 
     def _print_welcome(self):
         """Print welcome message"""
-        welcome = """
+        mode_desc = {
+            'tutorial': 'Tutorial mode - scaffolded learning with code skeletons',
+            'guided': 'Guided mode - full explanations',
+            'challenge': 'Challenge mode - write from scratch',
+            'debug': 'Debug mode - find and fix bugs',
+        }
+        welcome = f"""
 [bold blue]Sherpa[/bold blue] - Paper Implementation Coach
 
 Your guide to implementing ML papers step by step.
 
-[dim]Commands: load, fetch, start, explain, implement, help
-Type 'help' for all commands or 'help <cmd>' for details.[/dim]
+[dim]Mode: {mode_desc.get(self.tutoring_mode, self.tutoring_mode)}
+Commands: load, learn, explain, help | Type 'help' for all commands[/dim]
 """
         self.console.print(Panel(welcome, border_style="blue"))
 
@@ -123,6 +139,23 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
         command = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ''
 
+        # Check if tutoring session is active and should handle this input
+        if self.tutoring_engine and self.tutoring_engine.is_active():
+            # These commands exit tutoring or are handled specially
+            if command in ['exit', 'quit']:
+                return 'exit'
+            if command == 'load':
+                # Allow loading a new paper (exits tutoring)
+                self.tutoring_engine.state.phase = TutoringPhase.INIT
+                return self._cmd_load(args)
+            if command == 'help':
+                return self._cmd_help(args)
+
+            # Route everything else to the tutoring engine
+            response = self.tutoring_engine.process_input(user_input)
+            self._display_tutoring_response(response)
+            return None
+
         handlers = {
             'load': self._cmd_load,
             'fetch': self._cmd_fetch,
@@ -130,6 +163,9 @@ Type 'help' for all commands or 'help <cmd>' for details.[/dim]
             'resume': self._cmd_resume,
             'sessions': self._cmd_sessions,
             'status': self._cmd_status,
+            'learn': self._cmd_learn,
+            'hint': self._cmd_hint,
+            'mode': self._cmd_mode,
             'explain': self._cmd_explain,
             'equation': self._cmd_equation,
             'algorithm': self._cmd_algorithm,
@@ -1075,10 +1111,109 @@ Be specific! Reference actual algorithms/equations from the paper."""
             self.console.print(f"\n[red]Error: {e}[/red]")
             return ""
 
+    # =========================================================================
+    # Interactive Learning Commands
+    # =========================================================================
 
-def start_repl():
+    def _cmd_learn(self, args: str) -> None:
+        """Start an interactive learning session"""
+        if not self.claude:
+            self.console.print("[red]Learning requires Claude API. Run 'sherpa --setup' first.[/red]")
+            return
+
+        if not self.tutoring_engine:
+            self.console.print("[red]Tutoring engine not initialized.[/red]")
+            return
+
+        if not self.current_paper:
+            self.console.print("[yellow]Load a paper first with 'load <paper_id>'[/yellow]")
+            self.console.print("[dim]Example: load dpo_2023[/dim]")
+            return
+
+        # Update tutoring engine with paper context
+        paper_context = self._build_paper_context()
+        self.tutoring_engine.set_paper_context(
+            title=self.current_paper['title'],
+            context=paper_context
+        )
+
+        # Start learning
+        concept = args if args else self.current_paper['title']
+        response = self.tutoring_engine.start_learning(concept)
+        self._display_tutoring_response(response)
+
+    def _cmd_hint(self, args: str) -> None:
+        """Request a hint for the current TODO"""
+        if not self.tutoring_engine:
+            self.console.print("[yellow]Not in a learning session. Use 'learn' to start.[/yellow]")
+            return
+
+        if not self.tutoring_engine.is_active():
+            self.console.print("[yellow]Not in a learning session. Use 'learn' to start.[/yellow]")
+            return
+
+        response = self.tutoring_engine.process_input('hint')
+        self._display_tutoring_response(response)
+
+    def _cmd_mode(self, args: str) -> None:
+        """Switch tutoring mode"""
+        if not args:
+            current = self.tutoring_mode
+            self.console.print(f"\nCurrent mode: [bold]{current}[/bold]")
+            self.console.print("\nAvailable modes:")
+            self.console.print("  [cyan]tutorial[/cyan]  - Scaffolded learning with code skeletons (default)")
+            self.console.print("  [cyan]guided[/cyan]    - Full explanations, no interaction required")
+            self.console.print("  [cyan]challenge[/cyan] - Write from scratch, get feedback")
+            self.console.print("  [cyan]debug[/cyan]     - Find and fix bugs in broken code")
+            self.console.print("\n[dim]Use 'mode <name>' to switch[/dim]")
+            return
+
+        mode = args.lower().strip()
+        if mode not in ['tutorial', 'guided', 'challenge', 'debug']:
+            self.console.print(f"[red]Unknown mode: {mode}[/red]")
+            self.console.print("[dim]Available: tutorial, guided, challenge, debug[/dim]")
+            return
+
+        self.tutoring_mode = mode
+
+        if self.tutoring_engine:
+            response = self.tutoring_engine.process_input(f'mode {mode}')
+            self._display_tutoring_response(response)
+        else:
+            self.console.print(f"[green]Switched to {mode} mode.[/green]")
+
+    def _display_tutoring_response(self, response: TutoringResponse) -> None:
+        """Display a tutoring response with formatting"""
+        if not response:
+            return
+
+        # Display main message with markdown formatting
+        self.console.print()
+        self.console.print(Markdown(response.message))
+
+        # Show progress info if available
+        if response.show_progress and response.progress_info:
+            info = response.progress_info
+            if 'todo' in info:
+                self.console.print(f"\n[dim]Progress: TODO {info['todo']}/{info.get('total', '?')}[/dim]")
+
+        # Show prompt hint
+        if response.prompt_hint:
+            self.console.print(f"\n[dim italic]{response.prompt_hint}[/dim italic]")
+
+        # Show mode suggestion
+        if response.suggest_mode:
+            mode = response.suggest_mode
+            self.console.print(f"\n[cyan]Tip: Consider switching to '{mode}' mode[/cyan]")
+
+        # Show review suggestion
+        if response.suggest_review:
+            self.console.print(f"\n[yellow]Consider reviewing: {response.suggest_review}[/yellow]")
+
+
+def start_repl(mode: str = 'tutorial'):
     """Entry point for starting the REPL"""
-    repl = ImplementationREPL()
+    repl = ImplementationREPL(mode=mode)
     repl.run()
 
 

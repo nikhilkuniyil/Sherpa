@@ -397,7 +397,9 @@ def main():
         epilog="""
 Examples:
   sherpa --setup                              # Configure API key (first time)
-  sherpa -i                                   # Start interactive mode
+  sherpa -i                                   # Start interactive mode (tutorial by default)
+  sherpa -i --mode challenge                  # Start in challenge mode
+  sherpa --mode-help                          # Explain tutoring modes
   sherpa "I want to understand DPO"           # Smart search with intent detection
   sherpa --search "direct preference optimization"  # Explicit search
   sherpa --implement dpo_2023                 # Start implementing a specific paper
@@ -422,8 +424,56 @@ Examples:
     parser.add_argument('--expertise', default='intermediate',
                         choices=['beginner', 'intermediate', 'advanced'],
                         help='Your expertise level')
+    parser.add_argument('--mode', default='tutorial',
+                        choices=['tutorial', 'guided', 'challenge', 'debug'],
+                        help='Tutoring mode (default: tutorial)')
+    parser.add_argument('--mode-help', action='store_true',
+                        help='Explain each tutoring mode')
 
     args = parser.parse_args()
+
+    # Mode help
+    if args.mode_help:
+        print("""
+Sherpa Tutoring Modes
+=====================
+
+TUTORIAL (default)
+  Scaffolded learning with code skeletons. Sherpa gives structure and hints,
+  you fill in the gaps. Best for learning new concepts step by step.
+  - You'll be asked to reason about the approach before seeing code
+  - Code skeletons have TODOs for you to complete
+  - Get feedback on each submission
+  - Checkpoint questions verify understanding
+
+GUIDED
+  Full explanations with no interaction required. Use this when you're
+  completely stuck or just want to read and understand.
+  - Comprehensive explanations of concepts
+  - Complete code with inline comments
+  - Good for initial overview or review
+
+CHALLENGE
+  Requirements only - you write from scratch. Tests your understanding
+  after learning in Tutorial mode.
+  - Given requirements and constraints
+  - Write complete implementation yourself
+  - Get comprehensive feedback on your solution
+
+DEBUG
+  Find and fix bugs in broken code. Teaches debugging skills and
+  common pitfalls. Only suggested after demonstrating understanding.
+  - Buggy code with realistic errors
+  - Find and fix the bugs
+  - Learn common mistakes to avoid
+
+Usage:
+  sherpa -i --mode tutorial    # Start interactive mode with tutorial
+  sherpa -i --mode challenge   # Test yourself with challenge mode
+
+In the REPL, use 'mode <name>' to switch modes.
+        """)
+        return
 
     # Setup mode
     if args.setup:
@@ -443,7 +493,7 @@ Examples:
     # Interactive mode
     if args.interactive or args.implement:
         from .repl import ImplementationREPL
-        repl = ImplementationREPL()
+        repl = ImplementationREPL(mode=args.mode)
         if args.implement:
             # Pre-load the specified paper
             repl._cmd_load(args.implement)

@@ -3,7 +3,12 @@
 Test suite for Sherpa
 """
 
-import pytest
+try:
+    import pytest
+    PYTEST_AVAILABLE = True
+except ImportError:
+    PYTEST_AVAILABLE = False
+
 import tempfile
 import os
 

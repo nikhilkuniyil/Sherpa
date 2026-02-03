@@ -36,6 +36,23 @@ COMMANDS = {
         'examples': ['status'],
     },
 
+    # Interactive Learning
+    'learn': {
+        'help': 'Start interactive learning session for the loaded paper',
+        'usage': 'learn [concept]',
+        'examples': ['learn', 'learn "DPO loss function"'],
+    },
+    'hint': {
+        'help': 'Get a hint for the current TODO (3 levels of hints)',
+        'usage': 'hint',
+        'examples': ['hint'],
+    },
+    'mode': {
+        'help': 'Switch tutoring mode (tutorial/guided/challenge/debug)',
+        'usage': 'mode <mode_name>',
+        'examples': ['mode tutorial', 'mode challenge', 'mode guided'],
+    },
+
     # Understanding the paper
     'explain': {
         'help': 'Explain a concept from the paper',
@@ -186,6 +203,7 @@ def get_command_help(command: str = None) -> str:
 
     # Show all commands grouped
     groups = {
+        'Learning': ['learn', 'hint', 'mode'],
         'Discovery': ['search', 'more', 'add', 'recommend', 'papers'],
         'Paper': ['load', 'fetch', 'summary'],
         'Session': ['start', 'resume', 'sessions', 'status', 'save'],
