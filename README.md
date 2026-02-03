@@ -1,5 +1,8 @@
 # Sherpa
 
+<img src="https://github.com/user-attachments/assets/e21d5d03-4988-4b9a-bf4d-ee521ced3433" width="400" height="500">
+
+
 **Your AI-powered guide to implementing ML papers.**
 
 Sherpa is an interactive command-line tool that helps you learn and implement machine learning papers. Instead of just reading papers or copying code, Sherpa teaches you through scaffolded learning—guiding you step-by-step while you do the actual implementation.
