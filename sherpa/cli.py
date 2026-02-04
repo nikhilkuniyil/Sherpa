@@ -446,12 +446,12 @@ Sherpa Tutoring Modes
 =====================
 
 TUTORIAL (default)
-  Scaffolded learning with code skeletons. Sherpa gives structure and hints,
-  you fill in the gaps. Best for learning new concepts step by step.
-  - You'll be asked to reason about the approach before seeing code
-  - Code skeletons have TODOs for you to complete
-  - Get feedback on each submission
-  - Checkpoint questions verify understanding
+  File-based scaffolded learning. Sherpa generates a Python file with TODOs
+  that you complete in your IDE. Reviews your work automatically on each save.
+  - Run: sherpa --mode tutorial "I want to implement DPO"
+  - Complete implementation skeleton generated with all TODOs
+  - Work in your IDE (VS Code, Cursor, PyCharm, etc.)
+  - Automatic review and feedback when you save
 
 GUIDED
   Full explanations with no interaction required. Use this when you're
@@ -475,8 +475,9 @@ DEBUG
   - Learn common mistakes to avoid
 
 Usage:
-  sherpa -i --mode tutorial    # Start interactive mode with tutorial
-  sherpa -i --mode challenge   # Test yourself with challenge mode
+  sherpa --mode tutorial "I want to implement DPO"  # File-based tutorial
+  sherpa -i --mode challenge                        # Interactive challenge mode
+  sherpa -i                                         # Interactive REPL
 
 In the REPL, use 'mode <name>' to switch modes.
         """)
@@ -495,6 +496,53 @@ In the REPL, use 'mode <name>' to switch modes.
                 print("Setup complete.")
                 return
         prompt_for_api_key()
+        return
+
+    # Tutorial mode with question - file-based workflow
+    if args.mode == 'tutorial' and args.question and not args.interactive:
+        from .tutoring import run_tutorial
+        from .llm import UnifiedLLMClient, get_preferred_provider
+
+        # Check for LLM availability
+        if not get_preferred_provider():
+            print("Tutorial mode requires an LLM API key.")
+            print("Run 'sherpa --setup' to configure.")
+            return
+
+        llm = UnifiedLLMClient()
+        if not llm.is_available():
+            print("Failed to initialize LLM client.")
+            return
+
+        # Get paper context if available
+        paper_context = ""
+        paper_title = ""
+
+        # Try to find relevant paper in knowledge base
+        from .db import KnowledgeBase
+        kb = KnowledgeBase()
+        query_lower = args.question.lower()
+
+        # Check if query mentions a known paper
+        papers = kb.get_all_papers()
+        for paper in papers:
+            paper_id = paper.get('paper_id', '').lower()
+            title = paper.get('title', '').lower()
+            if paper_id in query_lower or any(word in query_lower for word in title.split()[:3]):
+                paper_title = paper.get('title', '')
+                paper_context = f"Paper: {paper_title}\n"
+                paper_context += f"Description: {paper.get('description', '')}\n"
+                paper_context += f"Key concepts: {', '.join(paper.get('key_concepts', []))}"
+                break
+        kb.close()
+
+        # Run tutorial
+        run_tutorial(
+            query=args.question,
+            llm_client=llm,
+            paper_title=paper_title,
+            paper_context=paper_context,
+        )
         return
 
     # Interactive mode

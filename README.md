@@ -37,6 +37,26 @@ python -m sherpa --setup
 
 ## Quick Start
 
+### Tutorial Mode (Recommended)
+
+The easiest way to learn is **Tutorial Mode** — Sherpa generates a code skeleton with TODOs, and you fill them in using your favorite IDE:
+
+```bash
+# Start a tutorial on DPO
+sherpa --mode tutorial "I want to implement DPO"
+
+# Sherpa will:
+# 1. Generate dpo_implementation.py with structured TODOs
+# 2. Watch the file for changes
+# 3. Automatically review your code when you save
+```
+
+Open the generated file in VS Code, Cursor, or any editor. Complete each TODO, save, and get instant feedback.
+
+### Interactive REPL
+
+For exploring papers and other learning modes:
+
 ```bash
 # Start interactive mode
 sherpa -i
@@ -51,6 +71,10 @@ sherpa -i --mode debug       # Find and fix bugs
 ## CLI Reference
 
 ```bash
+# File-based tutorial (recommended for learning)
+sherpa --mode tutorial "I want to implement DPO"   # Creates file, watches for changes
+sherpa --mode tutorial "teach me attention"        # Works with any ML concept
+
 # Interactive mode
 sherpa -i                              # Start REPL in tutorial mode
 sherpa -i --mode challenge             # Start in challenge mode
@@ -198,6 +222,7 @@ python -m tests.test_tutoring
 sherpa/
 ├── cli.py              # Main CLI entry point
 ├── config.py           # Configuration management
+├── llm.py              # Unified LLM client (Anthropic/OpenAI/Gemini)
 ├── db/                 # Knowledge base and sessions
 │   ├── knowledge_base.py
 │   ├── sessions.py
@@ -216,32 +241,52 @@ sherpa/
 │   ├── session.py
 │   └── commands.py
 └── tutoring/           # Interactive tutoring system
-    ├── engine.py
-    ├── state.py
-    ├── modes.py
-    └── prompts.py
+    ├── engine.py       # Tutoring orchestrator
+    ├── state.py        # State and metrics dataclasses
+    ├── modes.py        # Mode handlers (Tutorial, Challenge, etc.)
+    ├── skeleton.py     # Code skeleton generation
+    ├── file_watcher.py # File watching for automatic review
+    └── tutorial_runner.py  # File-based tutorial workflow
 ```
 
 ## How It Works
 
-1. **Load a Paper** — Sherpa fetches paper metadata and PDFs from arXiv, extracting key algorithms, equations, and concepts.
+### File-Based Tutorial Workflow
 
-2. **Start Learning** — Based on your chosen mode, Sherpa generates appropriate content:
-   - Tutorial: Code skeletons with TODOs
-   - Challenge: Requirements and constraints
-   - Debug: Buggy code to fix
-   - Guided: Full explanations
+When you run `sherpa --mode tutorial "topic"`, Sherpa creates an interactive learning experience:
 
-3. **Interactive Feedback** — As you work through the material, Sherpa:
-   - Evaluates your submissions
-   - Provides targeted feedback
-   - Offers hints when you're stuck
-   - Asks checkpoint questions to verify understanding
+1. **Generate Skeleton** — Sherpa creates a Python file (e.g., `dpo_implementation.py`) with:
+   - Complete file structure with imports and class definitions
+   - 4-7 numbered TODOs, each with a goal and hint
+   - `pass` placeholders where your code goes
 
-4. **Adaptive Learning** — Sherpa tracks your progress and:
-   - Suggests mode changes based on performance
-   - Identifies concepts that need review
-   - Adjusts hint proactivity based on your success rate
+2. **Code in Your IDE** — Open the file in VS Code, Cursor, PyCharm, etc. Work through TODOs in order.
+
+3. **Automatic Review** — When you save the file, Sherpa:
+   - Detects which TODO you completed
+   - Evaluates your implementation
+   - Provides specific feedback (correct, incorrect, or needs improvement)
+   - Guides you to the next TODO
+
+4. **Completion** — Once all TODOs are done, Sherpa congratulates you and summarizes what you learned.
+
+### Learning Modes
+
+| Mode | Description | Best For |
+|------|-------------|----------|
+| **Tutorial** | Code skeletons with TODOs | Learning new concepts step-by-step |
+| **Challenge** | Write from scratch, get feedback | Testing your understanding |
+| **Guided** | Full explanations and walkthroughs | When you're completely new to a topic |
+| **Debug** | Find and fix bugs in broken code | Deepening understanding through debugging |
+
+### Adaptive Learning
+
+Sherpa tracks your progress within a session:
+- **Success rate** — How often you complete TODOs correctly on first try
+- **Hint usage** — Whether you needed hints (3 levels available)
+- **Concepts mastered** — Topics you've demonstrated understanding of
+
+Based on your performance, Sherpa may suggest switching modes (e.g., "You're doing great! Try Challenge mode next time.")
 
 ## Contributing
 

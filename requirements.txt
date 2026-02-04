@@ -4,6 +4,7 @@ PyMuPDF>=1.23.0
 httpx>=0.25.0
 prompt-toolkit>=3.0.0
 rich>=13.0.0
+watchdog>=3.0.0          # File watching for tutorial mode
 
 # LLM providers (install at least one)
 anthropic>=0.18.0        # Anthropic Claude

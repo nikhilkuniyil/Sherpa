@@ -22,6 +22,9 @@ from sherpa.tutoring import (
     LearnerMetrics,
     TodoItem,
     CodeSkeleton,
+    SkeletonGenerator,
+    TutorialRunner,
+    TutorialSession,
 )
 from sherpa.tutoring.modes import (
     TutorialModeHandler,
@@ -352,6 +355,73 @@ class TestModeHandlers:
         assert handler.engine == self.mock_engine
 
 
+class TestSkeletonGenerator:
+    """Tests for SkeletonGenerator"""
+
+    def test_fallback_skeleton(self):
+        """Test fallback skeleton generation without LLM"""
+        generator = SkeletonGenerator(llm_client=None)
+        skeleton = generator.generate("DPO")
+
+        assert "TODO 1" in skeleton
+        assert "class" in skeleton
+        assert "def" in skeleton
+
+    def test_count_todos(self):
+        """Test TODO counting"""
+        generator = SkeletonGenerator(llm_client=None)
+        code = """
+# TODO 1: First
+pass
+# TODO 2: Second
+pass
+# TODO 3: Third
+pass
+"""
+        assert generator.count_todos(code) == 3
+
+    def test_topic_extraction(self):
+        """Test extracting topic from query"""
+        runner = TutorialRunner(llm_client=None)
+
+        assert runner.extract_topic("I want to implement DPO") == "DPO"
+        assert runner.extract_topic("learn about ORPO") == "ORPO"
+        assert runner.extract_topic("implement reinforcement learning") == "Reinforcement Learning"
+
+
+class TestTutorialSession:
+    """Tests for TutorialSession"""
+
+    def test_session_creation(self):
+        """Test creating a tutorial session"""
+        session = TutorialSession(
+            filepath="test.py",
+            topic="DPO",
+            total_todos=5
+        )
+
+        assert session.filepath == "test.py"
+        assert session.topic == "DPO"
+        assert session.total_todos == 5
+        assert len(session.reviewed_todos) == 0
+        assert session.all_complete == False
+
+    def test_session_progress(self):
+        """Test tracking session progress"""
+        session = TutorialSession(
+            filepath="test.py",
+            topic="DPO",
+            total_todos=3
+        )
+
+        session.reviewed_todos.add(1)
+        assert 1 in session.reviewed_todos
+
+        session.reviewed_todos.add(2)
+        session.reviewed_todos.add(3)
+        assert len(session.reviewed_todos) == 3
+
+
 class TestIntegration:
     """Integration tests for the tutoring system"""
 
@@ -361,11 +431,15 @@ class TestIntegration:
         from sherpa.tutoring.state import TutoringState, LearnerMetrics
         from sherpa.tutoring.modes import TutorialModeHandler
         from sherpa.tutoring.prompts import WHY_BEFORE_HOW_PROMPT
+        from sherpa.tutoring.skeleton import SkeletonGenerator
+        from sherpa.tutoring.tutorial_runner import TutorialRunner
 
         assert TutoringEngine is not None
         assert TutoringState is not None
         assert TutorialModeHandler is not None
         assert WHY_BEFORE_HOW_PROMPT is not None
+        assert SkeletonGenerator is not None
+        assert TutorialRunner is not None
 
     def test_repl_integration(self):
         """Test that REPL can initialize with tutoring engine"""
@@ -506,12 +580,37 @@ def run_all_tests():
         tests_failed += 1
 
     # Test 8: REPL Integration
-    print("\n[8/8] Testing REPL integration...")
+    print("\n[8/10] Testing REPL integration...")
     try:
         with patch('sherpa.repl.session.get_api_key', return_value=None):
             from sherpa.repl import ImplementationREPL
             repl = ImplementationREPL(mode='challenge')
             assert repl.tutoring_mode == 'challenge'
+        print("  PASSED")
+        tests_passed += 1
+    except Exception as e:
+        print(f"  FAILED: {e}")
+        tests_failed += 1
+
+    # Test 9: Skeleton Generator
+    print("\n[9/10] Testing skeleton generator...")
+    try:
+        generator = SkeletonGenerator(llm_client=None)
+        skeleton = generator.generate("DPO")
+        assert "TODO 1" in skeleton
+        assert generator.count_todos(skeleton) >= 1
+        print("  PASSED")
+        tests_passed += 1
+    except Exception as e:
+        print(f"  FAILED: {e}")
+        tests_failed += 1
+
+    # Test 10: Tutorial Runner
+    print("\n[10/10] Testing tutorial runner...")
+    try:
+        runner = TutorialRunner(llm_client=None)
+        assert runner.extract_topic("implement DPO") == "DPO"
+        assert runner.extract_topic("learn about ORPO") == "ORPO"
         print("  PASSED")
         tests_passed += 1
     except Exception as e:
