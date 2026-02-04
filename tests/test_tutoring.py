@@ -388,6 +388,21 @@ pass
         assert runner.extract_topic("learn about ORPO") == "ORPO"
         assert runner.extract_topic("implement reinforcement learning") == "Reinforcement Learning"
 
+    def test_full_pipeline_detection(self):
+        """Test detection of full pipeline requests"""
+        runner = TutorialRunner(llm_client=None)
+
+        # Should detect full pipeline requests
+        assert runner._suggests_full_pipeline("train BERT from scratch") == True
+        assert runner._suggests_full_pipeline("full RLHF pipeline") == True
+        assert runner._suggests_full_pipeline("end-to-end training") == True
+        assert runner._suggests_full_pipeline("complete training loop") == True
+
+        # Should NOT detect as full pipeline
+        assert runner._suggests_full_pipeline("implement DPO loss") == False
+        assert runner._suggests_full_pipeline("learn attention mechanism") == False
+        assert runner._suggests_full_pipeline("implement ORPO") == False
+
 
 class TestTutorialSession:
     """Tests for TutorialSession"""
@@ -606,11 +621,25 @@ def run_all_tests():
         tests_failed += 1
 
     # Test 10: Tutorial Runner
-    print("\n[10/10] Testing tutorial runner...")
+    print("\n[10/11] Testing tutorial runner...")
     try:
         runner = TutorialRunner(llm_client=None)
         assert runner.extract_topic("implement DPO") == "DPO"
         assert runner.extract_topic("learn about ORPO") == "ORPO"
+        print("  PASSED")
+        tests_passed += 1
+    except Exception as e:
+        print(f"  FAILED: {e}")
+        tests_failed += 1
+
+    # Test 11: Full Pipeline Detection
+    print("\n[11/11] Testing full pipeline detection...")
+    try:
+        runner = TutorialRunner(llm_client=None)
+        assert runner._suggests_full_pipeline("train BERT from scratch") == True
+        assert runner._suggests_full_pipeline("full RLHF pipeline") == True
+        assert runner._suggests_full_pipeline("implement DPO loss") == False
+        assert runner._suggests_full_pipeline("learn attention") == False
         print("  PASSED")
         tests_passed += 1
     except Exception as e:

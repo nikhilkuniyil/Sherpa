@@ -11,14 +11,25 @@ from datetime import datetime
 
 
 # Prompt template for generating implementation skeletons
-SKELETON_GENERATION_PROMPT = """Generate a complete Python implementation skeleton for {topic}.
+SKELETON_GENERATION_PROMPT = """Generate a SINGLE-FILE Python implementation skeleton for the CORE ALGORITHM of {topic}.
 
 Context about the paper/technique:
 {paper_context}
 
+IMPORTANT: Focus on the CORE ALGORITHM only, not a full training pipeline.
+- For loss functions (DPO, ORPO, KTO): implement the loss computation
+- For architectures (attention, transformers): implement the core module
+- For optimization methods: implement the algorithm itself
+
+Do NOT include:
+- Data loading/preprocessing
+- Full training loops with epochs
+- Logging, checkpointing, or evaluation
+- Distributed training setup
+
 Requirements:
-1. Create a COMPLETE, runnable Python file structure
-2. Include all necessary imports (torch, transformers, etc.)
+1. Create a SINGLE Python file with the core implementation
+2. Include necessary imports (torch, etc.)
 3. Add 4-7 TODO comments for the key implementation steps
 4. Each TODO should:
    - Have a clear number (TODO 1, TODO 2, etc.)
@@ -27,7 +38,7 @@ Requirements:
    - Use 'pass' as placeholder where code should go
 5. The skeleton should be educational - TODOs should build on each other
 6. Include docstrings explaining what each method does
-7. Add example usage at the bottom (commented out)
+7. Add a simple example usage at the bottom (commented out) showing how to call the core function/class
 
 TODO Format (follow exactly):
 ```
@@ -38,10 +49,9 @@ pass
 ```
 
 The implementation should cover:
-- Class initialization / setup
+- Class/function initialization
 - Core algorithm logic (the key mathematical operations)
-- Training/inference loop components
-- Any helper functions needed
+- The novel contribution from the paper
 
 Return ONLY the Python code, no markdown code blocks or explanations.
 Start with the imports and end with the example usage."""

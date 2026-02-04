@@ -7,13 +7,30 @@ Orchestrates the file-based tutorial workflow.
 import os
 import re
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt
 
 from .skeleton import SkeletonGenerator
 from .file_watcher import FileWatcher, TutorialSession
+
+
+# Keywords that suggest user wants a full pipeline (not just core algorithm)
+FULL_PIPELINE_KEYWORDS = [
+    "full pipeline", "end-to-end", "from scratch", "complete training",
+    "train .* from scratch", "full rlhf", "all stages", "entire",
+    "data loader", "dataset preparation", "reproduce .* training",
+]
+
+# Topics that work well as single-file core algorithms
+CORE_ALGORITHM_EXAMPLES = [
+    "Loss functions: DPO, ORPO, KTO, contrastive loss, focal loss",
+    "Architecture components: attention, patch embedding, layer norm",
+    "Model classes: SimpleDPO, RewardModel, Transformer blocks",
+    "Optimization: gradient clipping, learning rate schedulers",
+]
 
 
 class TutorialRunner:
@@ -66,13 +83,50 @@ class TutorialRunner:
         topic = query.strip()
         return topic.upper() if len(topic) <= 5 else topic.title()
 
-    def run(self, query: str, output_dir: str = ".") -> bool:
+    def _suggests_full_pipeline(self, query: str) -> bool:
+        """Check if query suggests user wants a full pipeline"""
+        query_lower = query.lower()
+        for keyword in FULL_PIPELINE_KEYWORDS:
+            if re.search(keyword, query_lower):
+                return True
+        return False
+
+    def _prompt_scope_choice(self, topic: str) -> str:
+        """
+        Ask user to choose between core algorithm and full pipeline.
+
+        Returns:
+            'core' or 'pipeline'
+        """
+        self.console.print(Panel(
+            f"[bold]What would you like to implement?[/bold]\n\n"
+            f"[cyan](1) Core algorithm only[/cyan] [dim](recommended)[/dim]\n"
+            f"    Single file focusing on the key contribution\n"
+            f"    (loss function, architecture component, etc.)\n\n"
+            f"[cyan](2) Full training pipeline[/cyan]\n"
+            f"    Multi-file setup with data loading, training loop, etc.\n\n"
+            f"[dim]Examples of core algorithms:[/dim]\n" +
+            "\n".join(f"  - {ex}" for ex in CORE_ALGORITHM_EXAMPLES),
+            title=f"Tutorial: {topic}",
+            border_style="blue"
+        ))
+
+        choice = Prompt.ask(
+            "Your choice",
+            choices=["1", "2"],
+            default="1"
+        )
+
+        return "core" if choice == "1" else "pipeline"
+
+    def run(self, query: str, output_dir: str = ".", skip_choice: bool = False) -> bool:
         """
         Run the tutorial workflow.
 
         Args:
             query: User's query (e.g., "I want to implement DPO")
             output_dir: Directory to create the implementation file
+            skip_choice: If True, skip the scope choice prompt (for testing)
 
         Returns:
             True if completed successfully, False otherwise
@@ -80,9 +134,29 @@ class TutorialRunner:
         # Extract topic
         topic = self.extract_topic(query)
 
+        # Check if query suggests full pipeline
+        suggests_pipeline = self._suggests_full_pipeline(query)
+
+        # Ask user to choose scope (unless skipped)
+        if not skip_choice:
+            scope = self._prompt_scope_choice(topic)
+
+            if scope == "pipeline":
+                self.console.print(Panel(
+                    "[yellow]Full pipeline support is coming soon![/yellow]\n\n"
+                    "For now, I'll help you with the [bold]core algorithm[/bold], "
+                    "which is the heart of any implementation.\n\n"
+                    "Once you've mastered the core, you can build the training "
+                    "pipeline around it yourself - that's actually a great way to "
+                    "solidify your understanding!",
+                    title="Coming Soon",
+                    border_style="yellow"
+                ))
+                self.console.print()
+
         self.console.print(Panel(
             f"[bold blue]Tutorial Mode[/bold blue]\n\n"
-            f"Topic: [cyan]{topic}[/cyan]\n\n"
+            f"Topic: [cyan]{topic}[/cyan] [dim](core algorithm)[/dim]\n\n"
             f"I'll generate an implementation skeleton with TODOs for you to complete.\n"
             f"Open the file in your IDE and fill in the TODOs - I'll review as you save.",
             title="Sherpa",
@@ -159,6 +233,7 @@ def run_tutorial(
     paper_title: str = "",
     paper_context: str = "",
     output_dir: str = ".",
+    skip_choice: bool = False,
 ) -> bool:
     """
     Convenience function to run a tutorial.
@@ -169,6 +244,7 @@ def run_tutorial(
         paper_title: Optional paper title for context
         paper_context: Optional paper context
         output_dir: Directory for output file
+        skip_choice: If True, skip the scope choice prompt
 
     Returns:
         True if completed, False otherwise
@@ -178,4 +254,4 @@ def run_tutorial(
         paper_title=paper_title,
         paper_context=paper_context,
     )
-    return runner.run(query, output_dir)
+    return runner.run(query, output_dir, skip_choice=skip_choice)
